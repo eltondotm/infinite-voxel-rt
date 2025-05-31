@@ -38,7 +38,7 @@ __device__ bool Sphere::hit(const Ray& r, float t_min, float t_max, HitRecord& r
     }
 
     rec.t = d0;
-    rec.p = (r.origin() + (r.dir() * d0));
-    rec.normal = (rec.p - center) / radius;
+    rec.p = r.at_world(d0);
+    rec.normal = (r.at(d0) - center) / radius;
     return true;
 }

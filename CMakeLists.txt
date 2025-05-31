@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(cpt)
+project(ivr)
 
 find_package(CUDAToolkit)
 
@@ -11,13 +11,12 @@ set (NVCC_DBG "")
 set(NVCC_FLAGS "${NVCC_DBG} -m64")
 set(GENCODE_FLAGS "-gencode arch=compute_86,code=sm_86")
 
-set(SOURCES main.cu)
-set(INCLUDES "")
+file(GLOB SRC_FILES "src/main.cu")
 
-add_executable(cpt ${SOURCES})
+add_executable(ivr ${SRC_FILES})
 
-target_compile_options(cpt PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${NVCC_FLAGS}${GENCODE_FLAGS}")
+target_compile_options(ivr PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${NVCC_FLAGS}${GENCODE_FLAGS}")
 
-set_target_properties(cpt PROPERTIES LINKER_LANGUAGE CXX)
+set_target_properties(ivr PROPERTIES LINKER_LANGUAGE CXX)
 
-target_include_directories(cpt PRIVATE CUDA::cudart) 
+target_include_directories(ivr PRIVATE CUDA::cudart) 

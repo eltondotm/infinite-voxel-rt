@@ -28,27 +28,29 @@ __global__ void render(Renderer *ren) {
 }
 
 __global__ void init_renderer(Renderer *renderer, Vec3 *fb, int w, int h, 
-                              Hitable **scene, curandState *rand_state) {
+                              Hitable **scene, BBox **world_bounds, curandState *rand_state) {
     Image out(fb, w, h);
-    *renderer = Renderer(out, scene, rand_state);
+    *renderer = Renderer(out, scene, world_bounds, rand_state);
 }
 
-__global__ void create_scene(Hitable **d_list, Hitable **d_world) {
+__global__ void create_scene(Hitable **d_list, Hitable **d_world, BBox **d_world_bounds) {
     if (threadIdx.x == 0 && blockIdx.x == 0) {
-        *(d_list)   = new Sphere(Vec3(0,0,-1), 0.5);
+        *(d_list)   = new Sphere(Vec3(-1), 0.5);
         *d_world    = new Scene(d_list, 1);
+        *d_world_bounds = new BBox(Vec3(-BOX_SIZE), Vec3(BOX_SIZE));
     }
 }
 
-__global__ void free_scene(Hitable **d_list, Hitable **d_world) {
+__global__ void free_scene(Hitable **d_list, Hitable **d_world, BBox **d_world_bounds) {
     delete *(d_list);
     //delete *(d_list+1);
     delete *d_world;
+    delete *d_world_bounds;
 }
 
 int main(int argc, char* argv[]) {
     int nx = 1200, ny = 600;
-    int ns = 100;
+    int ns = 10;
     if (argc == 3) {
         nx = std::stoi(argv[1]);
         ny = std::stoi(argv[2]);
@@ -65,7 +67,9 @@ int main(int argc, char* argv[]) {
     checkCudaErrors(cudaMalloc((void **)&d_list, 2*sizeof(Hitable *)));
     Hitable **d_scene;
     checkCudaErrors(cudaMalloc((void **)&d_scene, sizeof(Hitable *)));
-    create_scene<<<1,1>>>(d_list, d_scene);
+    BBox **d_world_bounds;
+    checkCudaErrors(cudaMallocManaged((void**)&d_world_bounds, sizeof(BBox)));
+    create_scene<<<1,1>>>(d_list, d_scene, d_world_bounds);
     SYNC
 
     Vec3 *fb;
@@ -80,7 +84,7 @@ int main(int argc, char* argv[]) {
     SYNC
     Renderer *ren;
     checkCudaErrors(cudaMallocManaged((void **)&ren, sizeof(Renderer)));
-    init_renderer<<<1,1>>>(ren, fb, nx, ny, d_scene, d_rand_state);
+    init_renderer<<<1,1>>>(ren, fb, nx, ny, d_scene, d_world_bounds, d_rand_state);
     SYNC
 
     clock_t start, stop;
@@ -103,7 +107,11 @@ int main(int argc, char* argv[]) {
     int n_channels = 3;
     stbi_write_png("out.png", nx, ny, n_channels, out, nx*n_channels*sizeof(uint8_t));
 
+    free_scene<<<1, 1>>>(d_list, d_scene, d_world_bounds);
+    checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaFree(fb));
+    checkCudaErrors(cudaFree(d_rand_state));
+    checkCudaErrors(cudaFree(d_world_bounds));
     checkCudaErrors(cudaFree(out));
     checkCudaErrors(cudaFree(ren));
 

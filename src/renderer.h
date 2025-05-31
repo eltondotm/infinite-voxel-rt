@@ -4,9 +4,12 @@
 #include "util/random.h"
 
 #include "hitable.h"
+#include "bbox.h"
 #include "camera.h"
 
-#define N_COPIES 5
+#define MAX_DIST 20.0f
+#define BOX_SIZE 2.0f
+#define EPS_F 0.001f
 
 struct Image {
     __device__ Image(Vec3 *_fb, int _w, int _h) : fb(_fb), w(_w), h(_h) {}
@@ -18,19 +21,23 @@ struct Image {
 
 class Renderer {
     public:
-        __device__ Renderer(Image _out, Hitable **_world, curandState *_rand_state) : 
-            world(_world), out(_out), rand_state(_rand_state) {
+        __device__ Renderer(Image _out, Hitable **_world, BBox **_world_bounds, curandState *_rand_state) : 
+            world(_world), out(_out), world_bounds(_world_bounds), rand_state(_rand_state) {
             cam = Camera();
         }
         
         __device__ Vec3 trace_ray(const Ray& r) {
             HitRecord rec;
-            for (int i = 0; i < N_COPIES; ++i) {
-                if ((*world)->hit(r, 0.0, FLT_MAX, rec)) {
+            while (true) {
+                if ((*world)->hit(r, EPS_F, FLT_MAX, rec)) {
+                    if (rec.t + r.t_offset > MAX_DIST) break;
+
+                    // Phong lighting
                     Vec3 light_dir = Vec3(1.0f, 1.0f, 0.0f).unit();
-                    Vec3 view_dir = (cam.origin - rec.p).unit();
+                    Vec3 view_dir = -r.dir();
                     Vec3 refl_dir = reflect(-light_dir, rec.normal);
 
+                    // Warm for lit areas, cool for unlit
                     Vec3 cool(0.4f, 0.4f, 0.5f);
                     Vec3 warm(0.8f, 0.6f, 0.7f);
                     Vec3 spec(1.0f, 0.8f, 0.9f);
@@ -42,6 +49,14 @@ class Renderer {
                     Vec3 specular = s * spec;
 
                     return (diffuse + specular).clamp();
+                } else {
+                    float t_min = EPS_F, t_max = FLT_MAX;
+                    if ((*world_bounds)->hit(r, t_min, t_max)) {
+                        r.wrap(t_max, BOX_SIZE);
+                    } else {
+                        break;
+                    }
+                    if (r.t_offset > MAX_DIST) break;
                 }
             }
             float t = 0.5f*(r.dir().y + 1.0f);
@@ -49,6 +64,7 @@ class Renderer {
         }
 
         Hitable **world;
+        BBox **world_bounds;
         Image out;
         Camera cam;
         curandState *rand_state;

@@ -5,6 +5,7 @@
 *.exp
 *.lib
 *.o
+*.pdb
 
 # Logs and databases #
 ######################
@@ -22,3 +23,5 @@
 nsys_easy
 nsys_easy.nsys-rep
 nsys_easy.sqlite
+
+build
