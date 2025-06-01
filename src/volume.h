@@ -1,18 +1,22 @@
 #pragma once
 
 #include "hitable.h"
-#include "util/cu_std.h"
+#include "util/error.h"
 
-class Sphere: public Hitable {
+typedef unsigned char VolumeType;
+
+class Volume: public Hitable {
     public:
-        __device__ Sphere() {}
-        __device__ Sphere(Vec3 c, float r) : center(c), radius(r) {}
+        __device__ Volume(cudaTextureObject_t v) : volume(v) {}
         __device__ virtual bool hit(const Ray& r, float tmin, float tmax, HitRecord& rec) const;
-        Vec3 center;
-        float radius; 
+
+        Vec3 center = Vec3(-1, -1, -1);
+        float radius = 0.5f;
+
+        cudaTextureObject_t volume;
 };
 
-__device__ bool Sphere::hit(const Ray& r, float t_min, float t_max, HitRecord& rec) const {
+__device__ bool Volume::hit(const Ray& r, float t_min, float t_max, HitRecord& rec) const {
     Vec3 oc = r.origin() - center;
     float a = 1.0f;
     float b = 2.0f * dot(oc, r.dir());

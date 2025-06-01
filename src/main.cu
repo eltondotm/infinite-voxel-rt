@@ -5,6 +5,7 @@
 #include <time.h>
 
 #include "sphere.h"
+#include "volume.h"
 #include "scene.h"
 #include "renderer.h"
 
@@ -13,6 +14,63 @@
 
 #define BLOCKSIZE_X 8
 #define BLOCKSIZE_Y 8
+
+const char *volumeFilename = "volume.raw";
+cudaExtent  volumeSize     = make_cudaExtent(2, 2, 2);
+typedef unsigned char VolumeType;
+
+cudaArray *d_volumeArray = 0;
+cudaTextureObject_t texObject;
+
+// from cuda-samples
+__host__ void *loadFile(const char *filename, size_t size) {
+    FILE *fp = fopen(filename, "rb");
+
+    if (!fp) {
+        fprintf(stderr, "Error opening file '%s', errno=%d\n", filename, errno);
+        return 0;
+    }
+
+    void *data = malloc(size);
+    size_t read = fread(data, 1, size, fp);
+    fclose(fp);
+
+    return data;
+}
+
+__host__ void init_volume(void *h_volume, cudaExtent volume_size) {
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<VolumeType>();
+    checkCudaErrors(cudaMalloc3DArray(&d_volumeArray, &channelDesc, volume_size));
+
+    // copy data to 3D array
+    cudaMemcpy3DParms copyParams = {0};
+    copyParams.srcPtr =
+        make_cudaPitchedPtr(h_volume, volume_size.width * sizeof(VolumeType), volume_size.width, volume_size.height);
+    copyParams.dstArray = d_volumeArray;
+    copyParams.extent   = volume_size;
+    copyParams.kind     = cudaMemcpyHostToDevice;
+    checkCudaErrors(cudaMemcpy3D(&copyParams));
+
+    cudaResourceDesc texRes;
+    memset(&texRes, 0, sizeof(cudaResourceDesc));
+
+    texRes.resType         = cudaResourceTypeArray;
+    texRes.res.array.array = d_volumeArray;
+
+    cudaTextureDesc texDescr;
+    memset(&texDescr, 0, sizeof(cudaTextureDesc));
+
+    texDescr.normalizedCoords = true;                 // access with normalized texture coordinates
+    texDescr.filterMode       = cudaFilterModeLinear; // linear interpolation
+
+    texDescr.addressMode[0] = cudaAddressModeClamp;   // clamp texture coordinates
+    texDescr.addressMode[1] = cudaAddressModeClamp;
+    texDescr.addressMode[2] = cudaAddressModeClamp;
+
+    texDescr.readMode = cudaReadModeNormalizedFloat;
+
+    checkCudaErrors(cudaCreateTextureObject(&texObject, &texRes, &texDescr, NULL));
+}
 
 __global__ void render(Renderer *ren) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -33,9 +91,13 @@ __global__ void init_renderer(Renderer *renderer, Vec3 *fb, int w, int h,
     *renderer = Renderer(out, scene, world_bounds, rand_state);
 }
 
-__global__ void create_scene(Hitable **d_list, Hitable **d_world, BBox **d_world_bounds) {
+__global__ void create_scene(Hitable **d_list, 
+                             Hitable **d_world, 
+                             BBox **d_world_bounds, 
+                             cudaTextureObject_t tex) {
     if (threadIdx.x == 0 && blockIdx.x == 0) {
-        *(d_list)   = new Sphere(Vec3(-1), 0.5);
+        //*(d_list)   = new Sphere(Vec3(-1), 0.5);
+        *(d_list)   = new Volume(tex);
         *d_world    = new Scene(d_list, 1);
         *d_world_bounds = new BBox(Vec3(-BOX_SIZE), Vec3(BOX_SIZE));
     }
@@ -63,13 +125,17 @@ int main(int argc, char* argv[]) {
     size_t fb_size = num_pixels*sizeof(Vec3);
     size_t out_size = num_pixels*3*sizeof(uint8_t);
 
+    size_t size = volumeSize.width * volumeSize.height * volumeSize.depth * sizeof(VolumeType);
+    void *h_volume = loadFile(volumeFilename, size);
+    init_volume(h_volume, volumeSize);
+
     Hitable **d_list;
     checkCudaErrors(cudaMalloc((void **)&d_list, 2*sizeof(Hitable *)));
     Hitable **d_scene;
     checkCudaErrors(cudaMalloc((void **)&d_scene, sizeof(Hitable *)));
     BBox **d_world_bounds;
     checkCudaErrors(cudaMallocManaged((void**)&d_world_bounds, sizeof(BBox)));
-    create_scene<<<1,1>>>(d_list, d_scene, d_world_bounds);
+    create_scene<<<1,1>>>(d_list, d_scene, d_world_bounds, texObject);
     SYNC
 
     Vec3 *fb;
