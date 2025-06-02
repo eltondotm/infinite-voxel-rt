@@ -1,6 +1,8 @@
 #pragma once
 
 #include "ray.h"
+#include "bbox.h"
+#define EPS_F 0.001f
 
 struct HitRecord {
     float t;

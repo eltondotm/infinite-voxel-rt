@@ -1,7 +1,7 @@
 #pragma once
 
 #include "hitable.h"
-#include "util/cu_std.h"
+#include "util/device_util.h"
 
 class Sphere: public Hitable {
     public:
@@ -35,7 +35,7 @@ __device__ bool Sphere::hit(const Ray& r, float t_min, float t_max, HitRecord& r
     }
 
     rec.t = d0;
-    rec.p = r.at_world(d0);
+    rec.p = r.at(d0);
     rec.normal = (r.at(d0) - center) / radius;
     return true;
 }

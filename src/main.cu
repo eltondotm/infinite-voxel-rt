@@ -8,6 +8,7 @@
 #include "volume.h"
 #include "scene.h"
 #include "renderer.h"
+#include "postprocess.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../deps/stbi/stb_image_write.h"
@@ -61,13 +62,13 @@ __host__ void init_volume(void *h_volume, cudaExtent volume_size) {
     memset(&texDescr, 0, sizeof(cudaTextureDesc));
 
     texDescr.normalizedCoords = true;                 // access with normalized texture coordinates
-    texDescr.filterMode       = cudaFilterModeLinear; // linear interpolation
+    texDescr.filterMode       = cudaFilterModePoint; // linear interpolation
 
     texDescr.addressMode[0] = cudaAddressModeClamp;   // clamp texture coordinates
     texDescr.addressMode[1] = cudaAddressModeClamp;
     texDescr.addressMode[2] = cudaAddressModeClamp;
 
-    texDescr.readMode = cudaReadModeNormalizedFloat;
+    texDescr.readMode = cudaReadModeElementType;
 
     checkCudaErrors(cudaCreateTextureObject(&texObject, &texRes, &texDescr, NULL));
 }
@@ -82,7 +83,7 @@ __global__ void render(Renderer *ren) {
     float u = float(i) / float(w);
     float v = float(j) / float(h);
     Ray r = ren->cam.generate_ray(u, v);
-    ren->out.fb[pixel_index] = ren->trace_ray(r);
+    ren->out.fb[pixel_index] = ren->trace_ray(r, 40.0f);
 }
 
 __global__ void init_renderer(Renderer *renderer, Vec3 *fb, int w, int h, 
@@ -94,10 +95,11 @@ __global__ void init_renderer(Renderer *renderer, Vec3 *fb, int w, int h,
 __global__ void create_scene(Hitable **d_list, 
                              Hitable **d_world, 
                              BBox **d_world_bounds, 
-                             cudaTextureObject_t tex) {
+                             cudaTextureObject_t tex,
+                             cudaExtent size) {
     if (threadIdx.x == 0 && blockIdx.x == 0) {
         //*(d_list)   = new Sphere(Vec3(-1), 0.5);
-        *(d_list)   = new Volume(tex);
+        *(d_list)   = new Volume(tex, size);
         *d_world    = new Scene(d_list, 1);
         *d_world_bounds = new BBox(Vec3(-BOX_SIZE), Vec3(BOX_SIZE));
     }
@@ -135,7 +137,7 @@ int main(int argc, char* argv[]) {
     checkCudaErrors(cudaMalloc((void **)&d_scene, sizeof(Hitable *)));
     BBox **d_world_bounds;
     checkCudaErrors(cudaMallocManaged((void**)&d_world_bounds, sizeof(BBox)));
-    create_scene<<<1,1>>>(d_list, d_scene, d_world_bounds, texObject);
+    create_scene<<<1,1>>>(d_list, d_scene, d_world_bounds, texObject, volumeSize);
     SYNC
 
     Vec3 *fb;
@@ -156,6 +158,8 @@ int main(int argc, char* argv[]) {
     clock_t start, stop;
     start = clock();
     render<<<blocks,threads>>>(ren);
+    SYNC
+    vignette<<<blocks,threads>>>(fb, nx, ny);
     SYNC
     stop = clock();
     double timer_s = ((double)(stop - start)) / CLOCKS_PER_SEC;

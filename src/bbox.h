@@ -7,7 +7,7 @@
 
 #include "ray.h"
 #include "vec3.h"
-#include "util/cu_std.h"
+#include "util/device_util.h"
 
 struct BBox {
 
@@ -51,32 +51,34 @@ struct BBox {
         return 2.0f * (extent.x * extent.z + extent.x * extent.y + extent.y * extent.z);
     }
 
-    __device__ bool hit(const Ray& r, float& t_min, float& t_max) const {
+    __device__ int hit(const Ray& r, float& t_min, float& t_max) const {
+        int hit_dim = 1;
+
         // Intersect x planes
         float tx_min = (min.x - r.origin().x) / r.dir().x;
         float tx_max = (max.x - r.origin().x) / r.dir().x;
         if(tx_min > tx_max) swap(tx_min, tx_max);  // Depends on ray orientation
-        if(tx_min > t_max || tx_max < t_min) return false;  // No overlap
-        if(tx_min > t_min) t_min = tx_min;  // Shrink bounds
+        if(tx_min > t_max || tx_max < t_min) return 0;  // No overlap
+        if(tx_min > t_min) t_min = tx_min;
         if(tx_max < t_max) t_max = tx_max;
 
         // Intersect y planes
         float ty_min = (min.y - r.origin().y) / r.dir().y;
         float ty_max = (max.y - r.origin().y) / r.dir().y;
         if(ty_min > ty_max) swap(ty_min, ty_max);
-        if(ty_min > t_max || ty_max < t_min) return false;
-        if(ty_min > t_min) t_min = ty_min;
-        if(ty_max < t_max) t_max = ty_max;
-
+        if(ty_min > t_max || ty_max < t_min) return 0;
+        if(ty_min > t_min) { t_min = ty_min; hit_dim = 2; }
+        if(ty_max < t_max)   t_max = ty_max;
+        
         // Intersect z planes
         float tz_min = (min.z - r.origin().z) / r.dir().z;
         float tz_max = (max.z - r.origin().z) / r.dir().z;
         if(tz_min > tz_max) swap(tz_min, tz_max);
-        if(tz_min > t_max || tz_max < t_min) return false;
-        if(tz_min > t_min) t_min = tz_min;
+        if(tz_min > t_max || tz_max < t_min) return 0;
+        if(tz_min > t_min) { t_min = tz_min; hit_dim = 3; }
         if(tz_max < t_max) t_max = tz_max;
 
-        return true;
+        return hit_dim;
     }
 
     Vec3 min;

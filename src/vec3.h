@@ -4,6 +4,18 @@
 #include <stdlib.h>
 #include <ostream>
 
+union IntVec3 {
+    __host__ __device__ IntVec3() : x(0), y(0), z(0) {}
+    __host__ __device__ IntVec3(int _x, int _y, int _z) : x(_x), y(_y), z(_z) {}
+
+    struct {
+        int x;
+        int y;
+        int z;
+    };
+    int data[3];
+};
+
 struct Vec3 {
     __host__ __device__ Vec3() : x(0), y(0), z(0) {}
     __host__ __device__ explicit Vec3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}

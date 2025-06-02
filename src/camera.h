@@ -5,10 +5,10 @@
 class Camera {
     public:
         __device__ Camera() {
-            lower_left = Vec3(-2.0f, -1.0f, -1.0f);
+            lower_left = Vec3(-2.0f, -1.0f, 0.0f);
             hori = Vec3(4.0f, 0.0f, 0.0f);
             vert = Vec3(0.0f, 2.0f, 0.0f);
-            origin = Vec3(0.0f);
+            origin = Vec3(0.0f, 0.0f, -2.0f);
         }
 
         __device__ Ray generate_ray(float u, float v) {

@@ -7,9 +7,7 @@
 #include "bbox.h"
 #include "camera.h"
 
-#define MAX_DIST 20.0f
-#define BOX_SIZE 2.0f
-#define EPS_F 0.001f
+#define BOX_SIZE 3.0f
 
 struct Image {
     __device__ Image(Vec3 *_fb, int _w, int _h) : fb(_fb), w(_w), h(_h) {}
@@ -26,11 +24,12 @@ class Renderer {
             cam = Camera();
         }
         
-        __device__ Vec3 trace_ray(const Ray& r) {
+        __device__ Vec3 trace_ray(const Ray& r, float max_dist) {
+            Vec3 bg_col(1.0f, 0.98f, 0.92f);
             HitRecord rec;
             while (true) {
                 if ((*world)->hit(r, EPS_F, FLT_MAX, rec)) {
-                    if (rec.t + r.t_offset > MAX_DIST) break;
+                    if (rec.t + r.t_offset > max_dist) break;
 
                     // Phong lighting
                     Vec3 light_dir = Vec3(1.0f, 1.0f, 0.0f).unit();
@@ -47,8 +46,10 @@ class Renderer {
                     s = (s * s) * (s * s) * (s * s) * s;
                     Vec3 diffuse = (1-t)*cool + t*warm;
                     Vec3 specular = s * spec;
+                    Vec3 color = (diffuse + specular).clamp();
 
-                    return (diffuse + specular).clamp();
+                    float a = smoothstep(max_dist - 5.0f, max_dist, rec.t + r.t_offset);
+                    return (1-a)*color + a*bg_col;
                 } else {
                     float t_min = EPS_F, t_max = FLT_MAX;
                     if ((*world_bounds)->hit(r, t_min, t_max)) {
@@ -56,11 +57,11 @@ class Renderer {
                     } else {
                         break;
                     }
-                    if (r.t_offset > MAX_DIST) break;
+                    if (r.t_offset > max_dist) break;
                 }
             }
             float t = 0.5f*(r.dir().y + 1.0f);
-            return (1.0f-t)*Vec3(1.0, 1.0, 1.0) + t*Vec3(0.5, 0.7, 1.0); 
+            return bg_col; 
         }
 
         Hitable **world;
