@@ -52,15 +52,15 @@ struct BBox {
     }
 
     __device__ int hit(const Ray& r, float& t_min, float& t_max) const {
-        int hit_dim = 1;
+        int hit_dim = -1;
 
         // Intersect x planes
         float tx_min = (min.x - r.origin().x) / r.dir().x;
         float tx_max = (max.x - r.origin().x) / r.dir().x;
         if(tx_min > tx_max) swap(tx_min, tx_max);  // Depends on ray orientation
         if(tx_min > t_max || tx_max < t_min) return 0;  // No overlap
-        if(tx_min > t_min) t_min = tx_min;
-        if(tx_max < t_max) t_max = tx_max;
+        if(tx_min > t_min) { t_min = tx_min; hit_dim = 1; }
+        if(tx_max < t_max)   t_max = tx_max;
 
         // Intersect y planes
         float ty_min = (min.y - r.origin().y) / r.dir().y;

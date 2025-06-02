@@ -13,13 +13,15 @@ endif()
 
 add_executable(ivr src/main.cu)
 
+target_compile_options(ivr PRIVATE --extended-lambda)
+
 target_include_directories(ivr PRIVATE CUDA::cudart) 
 
 # From Robert Maynard, "Building Cross-Platform CUDA Applications with CMake"
 if(APPLE)
   # We need to add the path to the driver (libcuda.dylib) as an rpath, 
   # so that the static cuda runtime can find it at runtime.
-  set_property(TARGET particle_test 
+  set_property(TARGET ivr 
                PROPERTY
                BUILD_RPATH ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
 endif()

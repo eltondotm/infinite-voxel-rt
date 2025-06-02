@@ -16,6 +16,8 @@
 #define BLOCKSIZE_X 8
 #define BLOCKSIZE_Y 8
 
+const float render_dist = 40.0f;
+
 const char *volumeFilename = "../../volume.raw";
 cudaExtent  volumeSize     = make_cudaExtent(3, 3, 3);
 typedef unsigned char VolumeType;
@@ -83,7 +85,7 @@ __global__ void print_volume(cudaTextureObject_t tex, cudaExtent dims) {
     }
 }
 
-__global__ void render(Renderer *ren) {
+__global__ void render(Renderer *ren, float render_dist) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     int w = ren->out.w;
@@ -93,13 +95,15 @@ __global__ void render(Renderer *ren) {
     float u = float(i) / float(w);
     float v = float(j) / float(h);
     Ray r = ren->cam.generate_ray(u, v);
-    ren->out.fb[pixel_index] = ren->trace_ray(r, 20.0f);
+    BuffInfo buff = ren->trace_ray(r, render_dist);
+    ren->gb[pixel_index] = make_float4(buff.depth, buff.normal.x, buff.normal.y, buff.normal.z);
+    ren->out.fb[pixel_index] = buff_to_albedo(r, buff, render_dist);
 }
 
-__global__ void init_renderer(Renderer *renderer, Vec3 *fb, int w, int h, 
+__global__ void init_renderer(Renderer *renderer, Vec3 *fb, float4 *gb, int w, int h, 
                               Hitable **scene, BBox **world_bounds, curandState *rand_state) {
     Image out(fb, w, h);
-    *renderer = Renderer(out, scene, world_bounds, rand_state);
+    *renderer = Renderer(out, gb, scene, world_bounds, rand_state);
 }
 
 __global__ void create_scene(Hitable **d_list, 
@@ -113,7 +117,7 @@ __global__ void create_scene(Hitable **d_list,
         *d_world    = new Scene(d_list, 1);
 
         Vec3 min_extent(0);
-        Vec3 max_extent(size.width*2, size.height, size.depth*2);
+        Vec3 max_extent(size.width*3, size.height, size.depth*3);
         *d_world_bounds = new BBox(min_extent, max_extent);
     }
 }
@@ -126,25 +130,29 @@ __global__ void free_scene(Hitable **d_list, Hitable **d_world, BBox **d_world_b
 }
 
 int main(int argc, char* argv[]) {
-    int nx = 1200, ny = 600;
-    int ns = 10;
+    int nx = 3840, ny = 2160;
     if (argc == 3) {
         nx = std::stoi(argv[1]);
         ny = std::stoi(argv[2]);
     }
+    if (argc == 2) {
 
-    std::cout << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
+    }
+
+    std::cout << "Rendering a " << nx << "x" << ny << " image ";
     std::cout << "in " << BLOCKSIZE_X << "x" << BLOCKSIZE_Y << " blocks.\n";
 
     int num_pixels = nx*ny;
+    int num_pixels_out = num_pixels/4;
     size_t fb_size = num_pixels*sizeof(Vec3);
-    size_t out_size = num_pixels*3*sizeof(uint8_t);
+    size_t gb_size = num_pixels*sizeof(float4);
+    size_t out_size = num_pixels_out*3*sizeof(uint8_t);
 
     size_t size = volumeSize.width * volumeSize.height * volumeSize.depth * sizeof(VolumeType);
     void *h_volume = loadFile(volumeFilename, size);
     init_volume(h_volume, volumeSize);
-    print_volume<<<1,1>>>(texObject, volumeSize);
-    SYNC
+    //print_volume<<<1,1>>>(texObject, volumeSize);
+    //SYNC
 
     Hitable **d_list;
     checkCudaErrors(cudaMalloc((void **)&d_list, 2*sizeof(Hitable *)));
@@ -156,7 +164,9 @@ int main(int argc, char* argv[]) {
     SYNC
 
     Vec3 *fb;
+    float4 *gb;
     checkCudaErrors(cudaMallocManaged((void **)&fb, fb_size));
+    checkCudaErrors(cudaMallocManaged((void **)&gb, gb_size));
 
     dim3 blocks(nx / BLOCKSIZE_X + 1, ny / BLOCKSIZE_Y + 1);
     dim3 threads(BLOCKSIZE_X, BLOCKSIZE_Y);
@@ -167,12 +177,16 @@ int main(int argc, char* argv[]) {
     SYNC
     Renderer *ren;
     checkCudaErrors(cudaMallocManaged((void **)&ren, sizeof(Renderer)));
-    init_renderer<<<1,1>>>(ren, fb, nx, ny, d_scene, d_world_bounds, d_rand_state);
+    init_renderer<<<1,1>>>(ren, fb, gb, nx, ny, d_scene, d_world_bounds, d_rand_state);
     SYNC
 
     clock_t start, stop;
     start = clock();
-    render<<<blocks,threads>>>(ren);
+    render<<<blocks,threads>>>(ren, render_dist);
+    SYNC
+    edge_detect<<<blocks,threads>>>(fb, gb, nx, ny);
+    SYNC
+    fog<<<blocks,threads>>>(fb, gb, render_dist, nx, ny);
     SYNC
     vignette<<<blocks,threads>>>(fb, nx, ny);
     SYNC
@@ -181,20 +195,19 @@ int main(int argc, char* argv[]) {
     std::cout << "took " << timer_s << " seconds.\n";
 
     // Output image setup and cleanup
-    int block_size = 256;
-    int num_blocks = (num_pixels*3 + block_size - 1) / block_size;
-    
+    dim3 blocks_out(nx/2 / BLOCKSIZE_X + 1, ny/2 / BLOCKSIZE_Y + 1);
     uint8_t *out;
     checkCudaErrors(cudaMallocManaged((void **)&out, out_size));
-    ldr_to_int<<<num_blocks, block_size>>>(out, fb, num_pixels);
+    downsample<<<blocks_out,threads>>>(out, fb, nx, ny);
     SYNC
 
     int n_channels = 3;
-    stbi_write_png("out.png", nx, ny, n_channels, out, nx*n_channels*sizeof(uint8_t));
+    stbi_write_png("out.png", nx/2, ny/2, n_channels, out, nx/2*n_channels*sizeof(uint8_t));
 
     free_scene<<<1, 1>>>(d_list, d_scene, d_world_bounds);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaFree(fb));
+    checkCudaErrors(cudaFree(gb));
     checkCudaErrors(cudaFree(d_rand_state));
     checkCudaErrors(cudaFree(d_world_bounds));
     checkCudaErrors(cudaFree(out));

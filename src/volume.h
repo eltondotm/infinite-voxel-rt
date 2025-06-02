@@ -89,7 +89,7 @@ __device__ bool Volume::hit(const Ray& r, float t_min, float t_max, HitRecord& r
                 last_dim = 2;
             }
         }
-        val = tex3D<VolumeType>(volume, (float)x, (float)y, (float)z);
+        val = tex3D<VolumeType>(volume, (float)x+0.5f, (float)y+0.5f, (float)z+0.5f);
     } while (val == 0);
 
     float t_hit = t_next[last_dim] - t_delta[last_dim];

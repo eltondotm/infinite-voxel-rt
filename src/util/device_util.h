@@ -27,3 +27,8 @@ inline __device__ float length(float u, float v)
 {
     return sqrtf(u*u + v*v);
 }
+
+inline __device__ Vec3 lerp(const Vec3& a, const Vec3& b, float x) 
+{
+    return (1.0f-x)*a + x*b;
+}
