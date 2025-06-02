@@ -9,16 +9,16 @@ struct Ray {
     __device__ Vec3 dir() const    { return d; }
     __device__ Vec3 at(const float t) const { return o + d*t; }
     __device__ Vec3 at_world(const float t) const { return at(t + t_offset); } 
-    __device__ void wrap(const float t, const float s) const {
+    __device__ void wrap(const float t, const Vec3& s) const {
         const float eps = 1e-5f;
         o = at(t + eps);
         t_offset += t + eps;
-        if (o.x >= s)  o.x -= s*2;
-        if (o.y >= s)  o.y -= s*2;
-        if (o.z >= s)  o.z -= s*2;
-        if (o.x <= -s) o.x += s*2;
-        if (o.y <= -s) o.y += s*2;
-        if (o.z <= -s) o.z += s*2;
+        if (o.x >= s.x) o.x -= s.x;
+        if (o.y >= s.y) o.y -= s.y;
+        if (o.z >= s.z) o.z -= s.z;
+        if (o.x <= 0)   o.x += s.x;
+        if (o.y <= 0)   o.y += s.y;
+        if (o.z <= 0)   o.z += s.z;
     }
 
     Vec3 d;

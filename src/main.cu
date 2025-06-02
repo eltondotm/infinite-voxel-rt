@@ -16,8 +16,8 @@
 #define BLOCKSIZE_X 8
 #define BLOCKSIZE_Y 8
 
-const char *volumeFilename = "volume.raw";
-cudaExtent  volumeSize     = make_cudaExtent(2, 2, 2);
+const char *volumeFilename = "../../volume.raw";
+cudaExtent  volumeSize     = make_cudaExtent(3, 3, 3);
 typedef unsigned char VolumeType;
 
 cudaArray *d_volumeArray = 0;
@@ -61,7 +61,7 @@ __host__ void init_volume(void *h_volume, cudaExtent volume_size) {
     cudaTextureDesc texDescr;
     memset(&texDescr, 0, sizeof(cudaTextureDesc));
 
-    texDescr.normalizedCoords = true;                 // access with normalized texture coordinates
+    texDescr.normalizedCoords = false;                 // access with normalized texture coordinates
     texDescr.filterMode       = cudaFilterModePoint; // linear interpolation
 
     texDescr.addressMode[0] = cudaAddressModeClamp;   // clamp texture coordinates
@@ -71,6 +71,16 @@ __host__ void init_volume(void *h_volume, cudaExtent volume_size) {
     texDescr.readMode = cudaReadModeElementType;
 
     checkCudaErrors(cudaCreateTextureObject(&texObject, &texRes, &texDescr, NULL));
+}
+
+__global__ void print_volume(cudaTextureObject_t tex, cudaExtent dims) {
+    for (int z = 0; z < dims.depth; ++z) {
+        for (int y = 0; y < dims.height; ++y) {
+            for (int x = 0; x < dims.width; ++x) {
+                printf("%d", tex3D<VolumeType>(tex, (float)x, (float)y, (float)z));
+            }
+        }
+    }
 }
 
 __global__ void render(Renderer *ren) {
@@ -83,7 +93,7 @@ __global__ void render(Renderer *ren) {
     float u = float(i) / float(w);
     float v = float(j) / float(h);
     Ray r = ren->cam.generate_ray(u, v);
-    ren->out.fb[pixel_index] = ren->trace_ray(r, 40.0f);
+    ren->out.fb[pixel_index] = ren->trace_ray(r, 20.0f);
 }
 
 __global__ void init_renderer(Renderer *renderer, Vec3 *fb, int w, int h, 
@@ -101,7 +111,10 @@ __global__ void create_scene(Hitable **d_list,
         //*(d_list)   = new Sphere(Vec3(-1), 0.5);
         *(d_list)   = new Volume(tex, size);
         *d_world    = new Scene(d_list, 1);
-        *d_world_bounds = new BBox(Vec3(-BOX_SIZE), Vec3(BOX_SIZE));
+
+        Vec3 min_extent(0);
+        Vec3 max_extent(size.width*2, size.height, size.depth*2);
+        *d_world_bounds = new BBox(min_extent, max_extent);
     }
 }
 
@@ -130,6 +143,8 @@ int main(int argc, char* argv[]) {
     size_t size = volumeSize.width * volumeSize.height * volumeSize.depth * sizeof(VolumeType);
     void *h_volume = loadFile(volumeFilename, size);
     init_volume(h_volume, volumeSize);
+    print_volume<<<1,1>>>(texObject, volumeSize);
+    SYNC
 
     Hitable **d_list;
     checkCudaErrors(cudaMalloc((void **)&d_list, 2*sizeof(Hitable *)));

@@ -32,18 +32,18 @@ __device__ bool Volume::hit(const Ray& r, float t_min, float t_max, HitRecord& r
 
     // Initializing variables
     Vec3 pos = r.at(t_min + EPS_F);
-    int x = (int)pos.x, 
-        y = (int)pos.y, 
-        z = (int)pos.z;
+    int x = clamp((int)pos.x, 0, dims.width), 
+        y = clamp((int)pos.y, 0, dims.height), 
+        z = clamp((int)pos.z, 0, dims.depth);
     IntVec3 step(cuda::std::signbit(r.dir().x) ? -1 : 1,
                  cuda::std::signbit(r.dir().y) ? -1 : 1,
                  cuda::std::signbit(r.dir().z) ? -1 : 1);
     Vec3 t_next(init_tmax(r, 0, x + step.x),
                 init_tmax(r, 1, y + step.y),
                 init_tmax(r, 2, z + step.z));
-    Vec3 t_delta(1.0f / r.dir().x,
-                 1.0f / r.dir().y,
-                 1.0f / r.dir().z);
+    Vec3 t_delta(1.0f / abs(r.dir().x),
+                 1.0f / abs(r.dir().y),
+                 1.0f / abs(r.dir().z));
 
     // If we exit the volume, which side will it be?
     IntVec3 out(step.x > 0 ? (int)dims.width  : -1,
@@ -63,7 +63,6 @@ __device__ bool Volume::hit(const Ray& r, float t_min, float t_max, HitRecord& r
     }
 
     // Finding minimum t value that hits a voxel boundary and stepping in that direction
-    size_t steps = 0;
     do {
         if (t_next.x < t_next.y) {
             if (t_next.x < t_next.z) {
@@ -90,7 +89,6 @@ __device__ bool Volume::hit(const Ray& r, float t_min, float t_max, HitRecord& r
                 last_dim = 2;
             }
         }
-        if (++steps > 3) printf("%d", last_dim);
         val = tex3D<VolumeType>(volume, (float)x, (float)y, (float)z);
     } while (val == 0);
 

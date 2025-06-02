@@ -11,10 +11,10 @@ __global__ void vignette(Vec3 *fb, size_t w, size_t h) {
     float u = float(i) / float(w);
     float v = float(j) / float(h);
 
-    float r_edge = 0.6f;
+    float r_edge = 0.65f;
     float r_pix  = length(u-0.5f, v-0.5f);
-    float softness = 0.4f;
-    float strength = 0.6f;
+    float softness = 0.3f;
+    float strength = 0.75f;
 
     float vignette = smoothstep(r_edge-softness, r_edge, r_pix)*strength;
 

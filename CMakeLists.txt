@@ -3,19 +3,15 @@ project(ivr LANGUAGES CXX CUDA)
 
 find_package(CUDAToolkit)
 
-# select one of these for Debug vs. Release
-#set(NVCC_DBG "-g -G")
-set (NVCC_DBG "")
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 
-set(NVCC_FLAGS "${NVCC_DBG} -m64")
-set(GENCODE_FLAGS "-gencode arch=compute_86,code=sm_86")
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+  set(CMAKE_CUDA_ARCHITECTURES 86)  # Replace with your architecture if necessary
+endif()
 
 add_executable(ivr src/main.cu)
-
-target_compile_options(ivr PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${NVCC_FLAGS}${GENCODE_FLAGS}")
-
-set_property(TARGET ivr
-             PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
 target_include_directories(ivr PRIVATE CUDA::cudart) 
 
