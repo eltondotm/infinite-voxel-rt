@@ -22,7 +22,7 @@ __host__ void *loadVox(const char *filename, cudaExtent& dims) {
     header[header_size] = '\0';
 
     const int *size_data = (int *)(strstr(header+20, size_tag)+12);
-    dims = make_cudaExtent(size_data[0], size_data[1], size_data[2]);
+    dims = make_cudaExtent(size_data[0], size_data[2], size_data[1]);
 
     const int *data_loc = (int *)(strstr(header+44, data_tag)+12);
     int n_voxels = data_loc[0];

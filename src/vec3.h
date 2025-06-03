@@ -136,6 +136,12 @@ struct Vec3 {
     __host__ __device__ float length() const {
         return sqrtf(length_squared());
     }
+    __host__ __device__ float min() const {
+        return fminf(fminf(x, y), z);
+    }
+    __host__ __device__ float max() const {
+        return fmaxf(fmaxf(x, y), z);
+    }
     __host__ __device__ Vec3 clamp() {
         x = fminf(1, fmaxf(0, x));
         y = fminf(1, fmaxf(0, y));

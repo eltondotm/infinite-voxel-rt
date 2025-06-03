@@ -100,9 +100,9 @@ __global__ void render(Renderer *ren, float render_dist) {
     float u = float(i) / float(w);
     float v = float(j) / float(h);
     Ray r = ren->cam.generate_ray(u, v);
-    BuffInfo buff = ren->trace_ray(r, render_dist);
-    ren->gb[pixel_index] = make_float4(buff.depth, buff.normal.x, buff.normal.y, buff.normal.z);
-    ren->out.fb[pixel_index] = buff_to_albedo(r, buff, render_dist);
+    HitRecord buff = ren->trace_ray(r, render_dist);
+    ren->gb[pixel_index] = make_float4(buff.t, buff.normal.x, buff.normal.y, buff.normal.z);
+    ren->out.fb[pixel_index] = ren->buff_to_color(r, buff, render_dist);
 }
 
 __global__ void init_renderer(Renderer *renderer, Vec3 *fb, float4 *gb, int w, int h, 
@@ -122,7 +122,7 @@ __global__ void create_scene(Hitable **d_list,
         *d_world    = new Scene(d_list, 1);
 
         Vec3 min_extent(0);
-        Vec3 max_extent(size.width, size.height, size.depth);
+        Vec3 max_extent(size.width*1.1f, size.height, size.depth*1.1f);
         *d_world_bounds = new BBox(min_extent, max_extent);
     }
 }
