@@ -69,6 +69,7 @@ class Renderer {
 };
 
 inline __device__ Vec3 buff_to_albedo(const Ray& r, const BuffInfo& buff, const float max_depth) {
+    //return buff.normal*0.5f+0.5f;  // Normal colors (for debugging)
     Vec3 bg_col(1.0f, 0.98f, 0.92f);
     if (buff.depth + EPS_F > max_depth) return bg_col;
 

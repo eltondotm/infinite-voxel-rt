@@ -62,8 +62,35 @@ __device__ bool Volume::hit(const Ray& r, float t_min, float t_max, HitRecord& r
         return true;
     }
 
+    // Fixed step size traversal
+    if (true) {
+        float t = t_min;
+        float t_step = 0.001f;
+        Vec3 p_step = r.dir()*t_step;
+        Vec3 pos = r.at(t);
+
+        while (val == 0) {
+            pos += p_step;
+            t += t_step;
+            if(!bbox.contains(pos)) return false;
+            val = tex3D<VolumeType>(volume, pos.x, pos.y, pos.z);
+        }
+
+        Vec3 pos_prev = pos - p_step;
+        if ((int)pos_prev.x != (int)pos.x) last_dim = 0;
+        if ((int)pos_prev.y != (int)pos.y) last_dim = 1;
+        if ((int)pos_prev.z != (int)pos.z) last_dim = 2;
+        Vec3 n(0);
+        n[last_dim] = (float)(-step.data[last_dim]);
+
+        rec.t = t;
+        rec.p = r.at(t);
+        rec.normal = n;
+        return true;
+    }
+
     // Finding minimum t value that hits a voxel boundary and stepping in that direction
-    do {
+    while (val == 0) {
         if (t_next.x < t_next.y) {
             if (t_next.x < t_next.z) {
                 x = x + step.x;
@@ -90,11 +117,11 @@ __device__ bool Volume::hit(const Ray& r, float t_min, float t_max, HitRecord& r
             }
         }
         val = tex3D<VolumeType>(volume, (float)x+0.5f, (float)y+0.5f, (float)z+0.5f);
-    } while (val == 0);
+    }
 
     float t_hit = t_next[last_dim] - t_delta[last_dim];
     Vec3 n(0);
-    n[last_dim] = (float)-step.data[last_dim];
+    n[last_dim] = -(float)step.data[last_dim];
 
     rec.t = t_hit;
     rec.p = r.at(t_hit);

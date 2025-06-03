@@ -44,6 +44,13 @@ struct BBox {
         return min.x > max.x || min.y > max.y || min.z > max.z;
     }
 
+    // Check if a given point is inside the box
+    __device__ bool contains(const Vec3& p) const {
+        return min.x <= p.x && max.x >= p.x &&
+               min.y <= p.y && max.y >= p.y &&
+               min.z <= p.z && max.z >= p.z;
+    }
+
     /// Get surface area of the box
     __device__ float surface_area() const {
         if(empty()) return 0.0f;

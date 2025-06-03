@@ -6,14 +6,18 @@
 
 union IntVec3 {
     __host__ __device__ IntVec3() : x(0), y(0), z(0) {}
-    __host__ __device__ IntVec3(int _x, int _y, int _z) : x(_x), y(_y), z(_z) {}
+    __host__ __device__ IntVec3(int _x, int _y, int _z) {
+        data[0] = _x;
+        data[1] = _y;
+        data[2] = _z;
+    }
 
     struct {
         int x;
         int y;
         int z;
     };
-    int data[3];
+    int data[3] = {};
 };
 
 struct Vec3 {
