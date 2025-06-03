@@ -10,7 +10,7 @@ struct Ray {
     __device__ Vec3 at(const float t) const { return o + d*t; }
     __device__ Vec3 at_world(const float t) const { return at(t + t_offset); } 
     __device__ void wrap(const float t, const Vec3& s) const {
-        const float eps = 1e-5f;
+        const float eps = 1e-3f;
         o = at(t + eps);
         t_offset += t + eps;
         if (o.x >= s.x) o.x -= s.x;

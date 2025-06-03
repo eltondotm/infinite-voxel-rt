@@ -63,7 +63,7 @@ __device__ bool Volume::hit(const Ray& r, float t_min, float t_max, HitRecord& r
     }
 
     // Fixed step size traversal
-    if (true) {
+    if (false) {
         float t = t_min;
         float t_step = 0.001f;
         Vec3 p_step = r.dir()*t_step;

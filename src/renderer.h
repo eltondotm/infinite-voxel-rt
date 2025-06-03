@@ -29,8 +29,8 @@ class Renderer {
                             gb(_gb),
                             world_bounds(_world_bounds), 
                             rand_state(_rand_state) {
-            Vec3 cam_pos(5.0f, 2.0f, 5.0f);
-            Vec3 cam_target(-1.0f, 1.5f, 0);
+            Vec3 cam_pos(55.0f, 42.0f, 75.0f);
+            Vec3 cam_target(100.0f, 25.0f, 150.0f);
             Vec3 up(0, 1.0f, 0);
             float vfov = 90;
             float aspect = (float)out.w/(float)out.h;

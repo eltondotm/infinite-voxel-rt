@@ -33,7 +33,7 @@ __global__ void edge_detect(Vec3 *fb, float4 *gb, size_t nx, size_t ny) {
         int y = clamp(j, 0, ny-1);
         int idx = (ny-y-1)*nx + x;
         float4 buff = gb[idx];
-        return buff.x;
+        return max(log2f(buff.x), 0.0f);
     };
 
     int lw = 2; // Line width
@@ -58,6 +58,8 @@ __global__ void edge_detect(Vec3 *fb, float4 *gb, size_t nx, size_t ny) {
     float dsw = depth(i-lw, j-lw);
     float dse = depth(i+lw, j-lw);
 
+    if (dcenter > 8.0f) return;
+
     Vec3 kernel0((nw-center).length(), (n -center).length(), (ne-center).length());
     Vec3 kernel1((w -center).length(),  0,                   (e -center).length());
     Vec3 kernel2((sw-center).length(), (s -center).length(), (se-center).length());
@@ -74,8 +76,8 @@ __global__ void edge_detect(Vec3 *fb, float4 *gb, size_t nx, size_t ny) {
     edge_y = dot(sobel_y0, kernel0) + dot(sobel_y1, kernel1) + dot(sobel_y2, kernel2);
     float edge_depth = length(edge_x, edge_y);
 
-    float threshold = 1.0;
-    float edge = max(edge_normal, edge_depth*0.2f);
+    float threshold = 0.5;
+    float edge = max(edge_normal, edge_depth);
     if (edge > threshold) {
         int pixel_index = (ny-j-1)*nx + i;
         fb[pixel_index] = Vec3(0);

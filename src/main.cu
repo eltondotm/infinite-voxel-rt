@@ -4,6 +4,7 @@
 #include <string>
 #include <time.h>
 
+#include "util/vox_loader.h"
 #include "sphere.h"
 #include "volume.h"
 #include "scene.h"
@@ -16,16 +17,17 @@
 #define BLOCKSIZE_X 8
 #define BLOCKSIZE_Y 8
 
-const float render_dist = 40.0f;
+float render_dist = 500.0f;
 
 const char *volumeFilename = "../../volume.raw";
-cudaExtent  volumeSize     = make_cudaExtent(3, 3, 3);
+const char *voxFilename    = "../../mani.vox";
+cudaExtent  volumeSize;
 typedef unsigned char VolumeType;
 
 cudaArray *d_volumeArray = 0;
 cudaTextureObject_t texObject;
 
-// from cuda-samples
+// Loading raw texture bytes, use vox_loader for vox files
 __host__ void *loadFile(const char *filename, size_t size) {
     FILE *fp = fopen(filename, "rb");
 
@@ -79,7 +81,10 @@ __global__ void print_volume(cudaTextureObject_t tex, cudaExtent dims) {
     for (int z = 0; z < dims.depth; ++z) {
         for (int y = 0; y < dims.height; ++y) {
             for (int x = 0; x < dims.width; ++x) {
-                printf("%d", tex3D<VolumeType>(tex, (float)x, (float)y, (float)z));
+                VolumeType val = tex3D<VolumeType>(tex, (float)x, (float)y, (float)z);
+                if (val != 0) {
+                    printf("(%i,%i,%i)->%i", x, y, z, val);
+                }
             }
         }
     }
@@ -117,7 +122,7 @@ __global__ void create_scene(Hitable **d_list,
         *d_world    = new Scene(d_list, 1);
 
         Vec3 min_extent(0);
-        Vec3 max_extent(size.width*3, size.height, size.depth*3);
+        Vec3 max_extent(size.width, size.height, size.depth);
         *d_world_bounds = new BBox(min_extent, max_extent);
     }
 }
@@ -136,7 +141,7 @@ int main(int argc, char* argv[]) {
         ny = std::stoi(argv[2]);
     }
     if (argc == 2) {
-
+        render_dist = std::stof(argv[1]);
     }
 
     std::cout << "Rendering a " << nx << "x" << ny << " image ";
@@ -148,8 +153,11 @@ int main(int argc, char* argv[]) {
     size_t gb_size = num_pixels*sizeof(float4);
     size_t out_size = num_pixels_out*3*sizeof(uint8_t);
 
-    size_t size = volumeSize.width * volumeSize.height * volumeSize.depth * sizeof(VolumeType);
-    void *h_volume = loadFile(volumeFilename, size);
+    // If loading raw files, make sure to initialize volumeSize ahead of time
+    // size_t size = volumeSize.width * volumeSize.height * volumeSize.depth * sizeof(VolumeType);
+    // void *h_volume = loadFile(volumeFilename, size);
+
+    void *h_volume = loadVox(voxFilename, volumeSize);
     init_volume(h_volume, volumeSize);
     //print_volume<<<1,1>>>(texObject, volumeSize);
     //SYNC
