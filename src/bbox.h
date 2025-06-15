@@ -1,93 +1,70 @@
 #pragma once
 
-#include <algorithm>
-#include <cfloat>
-#include <cmath>
-#include <vector>
-
 #include "ray.h"
-#include "vec3.h"
-#include "util/device_util.h"
+
+#include "util/mathlib.h"
 
 struct BBox {
+    // Default: unit box
+    __device__ BBox() { min = make_float3(-1.0f); max = make_float3(1.0f); }
+    __device__ BBox(float3 _min, float3 _max) : min(_min), max(_max) {}
 
-    /// Default min is max float value, default max is negative max float value
-    __device__ BBox() : min(FLT_MAX), max(-FLT_MAX) {
+    __device__ float3 extent() const {
+        return max - min;
     }
-    /// Set minimum and maximum extent
-    __device__ explicit BBox(Vec3 min, Vec3 max) : min(min), max(max) {
-    }
-
-    /// Rest min to max float, max to negative max float
-    __device__ void reset() {
-        min = Vec3(FLT_MAX);
-        max = Vec3(-FLT_MAX);
+    
+    __device__ float3 center() const {
+        return (max + min) * 0.5f;
     }
 
-    /// Expand bounding box to include point
-    __device__ void enclose(Vec3 point) {
-        min = hmin(min, point);
-        max = hmax(max, point);
-    }
-    __device__ void enclose(BBox box) {
-        min = hmin(min, box.min);
-        max = hmax(max, box.max);
-    }
-
-    /// Get center point of box
-    __device__ Vec3 center() const {
-        return (min + max) * 0.5f;
-    }
-
-    // Check whether box has no volume
-    __device__ bool empty() const {
-        return min.x > max.x || min.y > max.y || min.z > max.z;
-    }
-
-    // Check if a given point is inside the box
-    __device__ bool contains(const Vec3& p) const {
-        return min.x <= p.x && max.x >= p.x &&
-               min.y <= p.y && max.y >= p.y &&
-               min.z <= p.z && max.z >= p.z;
-    }
-
-    /// Get surface area of the box
-    __device__ float surface_area() const {
-        if(empty()) return 0.0f;
-        Vec3 extent = max - min;
-        return 2.0f * (extent.x * extent.z + extent.x * extent.y + extent.y * extent.z);
-    }
-
-    __device__ int hit(const Ray& r, float& t_min, float& t_max) const {
-        int hit_dim = -1;
-
+    __device__ bool hit(const Ray r, float& tnear, float& tfar) const {
         // Intersect x planes
-        float tx_min = (min.x - r.origin().x) / r.dir().x;
-        float tx_max = (max.x - r.origin().x) / r.dir().x;
-        if(tx_min > tx_max) swap(tx_min, tx_max);  // Depends on ray orientation
-        if(tx_min > t_max || tx_max < t_min) return 0;  // No overlap
-        if(tx_min > t_min) { t_min = tx_min; hit_dim = 1; }
-        if(tx_max < t_max)   t_max = tx_max;
+        float tx_min = (min.x - r.o.x) / r.d.x;
+        float tx_max = (max.x - r.o.x) / r.d.x;
+        if(tx_min > tx_max) swap(tx_min, tx_max);
+        if(tx_min > tfar || tx_max < tnear) return false;  // No overlap
+        if(tx_min > tnear) tnear = tx_min;
+        if(tx_max < tfar) tfar = tx_max;
 
         // Intersect y planes
-        float ty_min = (min.y - r.origin().y) / r.dir().y;
-        float ty_max = (max.y - r.origin().y) / r.dir().y;
+        float ty_min = (min.y - r.o.y) / r.d.y;
+        float ty_max = (max.y - r.o.y) / r.d.y;
         if(ty_min > ty_max) swap(ty_min, ty_max);
-        if(ty_min > t_max || ty_max < t_min) return 0;
-        if(ty_min > t_min) { t_min = ty_min; hit_dim = 2; }
-        if(ty_max < t_max)   t_max = ty_max;
+        if(ty_min > tfar || ty_max < tnear) return false;
+        if(ty_min > tnear) tnear = ty_min;
+        if(ty_max < tfar) tfar = ty_max;
         
         // Intersect z planes
-        float tz_min = (min.z - r.origin().z) / r.dir().z;
-        float tz_max = (max.z - r.origin().z) / r.dir().z;
+        float tz_min = (min.z - r.o.z) / r.d.z;
+        float tz_max = (max.z - r.o.z) / r.d.z;
         if(tz_min > tz_max) swap(tz_min, tz_max);
-        if(tz_min > t_max || tz_max < t_min) return 0;
-        if(tz_min > t_min) { t_min = tz_min; hit_dim = 3; }
-        if(tz_max < t_max) t_max = tz_max;
+        if(tz_min > tfar || tz_max < tnear) return false;
+        if(tz_min > tnear) tnear = tz_min;
+        if(tz_max < tfar) tfar = tz_max;
 
-        return hit_dim;
+        return true;
     }
 
-    Vec3 min;
-    Vec3 max;
+    __device__ bool hitNormal(Ray r, float& tnear, float& tfar, float3& n) const {
+        if (!hit(r, tnear, tfar)) return false;
+
+        float3 intersection = r.at(tnear);
+
+        // Transform to unit box
+        intersection -= center();
+        intersection *= 2.0f / extent();
+
+        // Truncating to integer component
+        intersection.x = (float)((int)(intersection.x + EPS_F));
+        intersection.y = (float)((int)(intersection.y + EPS_F));
+        intersection.z = (float)((int)(intersection.z + EPS_F));
+        
+        // Normalize in case of edges or corners
+        n = normalize(intersection);
+
+        return true;
+    }
+
+    float3 min;
+    float3 max;
 };

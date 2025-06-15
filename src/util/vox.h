@@ -1,9 +1,9 @@
 #pragma once
 
-#include <cstring>
+#include <cuda_runtime.h>
 
-// Generates 3D texture data from vox file and stores its dimensions in dims
-__host__ void *loadVox(const char *filename, cudaExtent& dims) {
+/* Reads a .vox file into a texture buffer and populates the dimensions. */
+void* loadVox(const char *filename, cudaExtent& dims) {
     FILE *fp = fopen(filename, "rb");
 
     if (!fp) {
@@ -35,7 +35,7 @@ __host__ void *loadVox(const char *filename, cudaExtent& dims) {
     void *data = calloc(dims.width * dims.height * dims.depth, sizeof(unsigned char));
     for (int i = 0; i < n_voxels; ++i) {
         uchar4 v = voxels[i];
-        int idx = (v.x + dims.width*(v.z + dims.height*v.y));
+        size_t idx = (v.x + dims.width*(v.z + dims.height*v.y));
         *((unsigned char *)data+idx) = v.w;
     }
 

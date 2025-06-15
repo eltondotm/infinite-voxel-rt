@@ -1,27 +1,58 @@
-cmake_minimum_required(VERSION 3.18)
-project(ivr LANGUAGES CXX CUDA)
-
-find_package(CUDAToolkit)
-
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
+﻿# CMakeList.txt : CMake project for manifold-rt, include source and define
+# project specific logic here.
+#
+cmake_minimum_required (VERSION 3.10)
 
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 86)  # Replace with your architecture if necessary
+  set(CMAKE_CUDA_ARCHITECTURES 86)
 endif()
 
-add_executable(ivr src/main.cu)
-
-target_compile_options(ivr PRIVATE --extended-lambda)
-
-target_include_directories(ivr PRIVATE CUDA::cudart) 
-
-# From Robert Maynard, "Building Cross-Platform CUDA Applications with CMake"
-if(APPLE)
-  # We need to add the path to the driver (libcuda.dylib) as an rpath, 
-  # so that the static cuda runtime can find it at runtime.
-  set_property(TARGET ivr 
-               PROPERTY
-               BUILD_RPATH ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES})
+# Enable Hot Reload for MSVC compilers if supported.
+if (POLICY CMP0141)
+  cmake_policy(SET CMP0141 NEW)
+  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
+
+project ("manifold-rt" LANGUAGES CXX CUDA)
+
+find_package(OpenGL REQUIRED) 
+if (CMAKE_VERSION VERSION_LESS 3.17)
+	find_package(CUDA REQUIRED)
+else()
+	find_package(CUDAToolkit REQUIRED)
+endif()
+
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+  set(CMAKE_CUDA_ARCHITECTURES 86)
+endif()
+
+set(SRCS 
+	"src/display.cpp" 
+	"src/kernel.cu"
+)
+
+#set(DEPS
+#   "deps/GLFW/glfw3.h" 
+#	"deps/GLFW/glfw3native.h" 
+#	"deps/GLEW/eglew.h" 
+#	"deps/GLEW/glew.h" 
+#	"deps/GLEW/glxew.h" 
+#	"deps/GLEW/wglew.h" 
+#)
+
+# Add source to this project's executable.
+add_executable (manifold-rt ${SRCS} ${DEPS})
+
+if (CMAKE_VERSION VERSION_GREATER 3.12)
+  set_property(TARGET manifold-rt PROPERTY CXX_STANDARD 20)
+endif()
+
+target_compile_options(manifold-rt PRIVATE --extended-lambda)
+
+add_compile_definitions(GLEW_STATIC)
+
+set(LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/deps/lib/)
+
+target_include_directories(manifold-rt PRIVATE deps ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+
+target_link_libraries(manifold-rt PRIVATE OpenGL::GL ${LIB_DIR}glfw3.lib ${LIB_DIR}glew32s.lib)

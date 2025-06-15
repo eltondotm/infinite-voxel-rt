@@ -1,135 +1,124 @@
 #pragma once
 
+#include "bbox.h"
+#include "util/mathlib.h"
+
 #include <cuda/cmath>
 
-#include "hitable.h"
-#include "util/error.h"
+typedef unsigned char uchar;
 
-typedef unsigned char VolumeType;
-
-
-class Volume: public Hitable {
-    public:
-        __device__ Volume(cudaTextureObject_t v, cudaExtent d) : volume(v), dims(d) {
-            Vec3 min_coord(0);
-            Vec3 max_coord(dims.width, dims.height, dims.depth);
-            bbox = BBox(min_coord, max_coord);
-        }
-        __device__ virtual bool hit(const Ray& r, float tmin, float tmax, HitRecord& rec) const;
-
-        BBox bbox;
-        cudaTextureObject_t volume;
-        cudaExtent dims;
-    private:
-        __forceinline__ __device__ float init_tmax(const Ray& r, int dim, int next_coord) const;
+enum Dim {
+    X,
+    Y,
+    Z
 };
 
+struct Volume {
+    cudaTextureObject_t tex;
+    cudaExtent          dims;
+    BBox                box;
+};
+
+struct HitRecord {
+    float t;
+    float3 p;
+    float3 normal;
+};
+    
 // Voxel traversal from Amantides and Woo
-__device__ bool Volume::hit(const Ray& r, float t_min, float t_max, HitRecord& rec) const {
-    // Intersection times stored in t_min and t_max
-    int last_dim = bbox.hit(r, t_min, t_max) - 1;
-    if (last_dim == -1) return false;
+__device__ bool hitVolume(const Ray& r,
+                          Volume v,
+                          float tmin, 
+                          float tmax,
+                          HitRecord& rec) {
+    // Intersection times stored in tmin and tmax
+    float3 normal;
+    if (!v.box.hitNormal(r, tmin, tmax, normal)) return false;
+
+    if (tmin < 0) printf("whoops");
 
     // Initializing variables
-    Vec3 pos = r.at(t_min + EPS_F);
-    int x = clamp((int)pos.x, 0, dims.width), 
-        y = clamp((int)pos.y, 0, dims.height), 
-        z = clamp((int)pos.z, 0, dims.depth);
-    IntVec3 step(cuda::std::signbit(r.dir().x) ? -1 : 1,
-                 cuda::std::signbit(r.dir().y) ? -1 : 1,
-                 cuda::std::signbit(r.dir().z) ? -1 : 1);
-    Vec3 t_next(init_tmax(r, 0, x + step.x),
-                init_tmax(r, 1, y + step.y),
-                init_tmax(r, 2, z + step.z));
-    Vec3 t_delta(1.0f / abs(r.dir().x),
-                 1.0f / abs(r.dir().y),
-                 1.0f / abs(r.dir().z));
+    float3 pos = r.at(tmin + EPS_F);
+    
+    int x = clamp((int)pos.x, 0, v.dims.width), 
+        y = clamp((int)pos.y, 0, v.dims.height), 
+        z = clamp((int)pos.z, 0, v.dims.depth);
+    
+    int3 step(cuda::std::signbit(r.d.x) ? -1 : 1,
+              cuda::std::signbit(r.d.y) ? -1 : 1,
+              cuda::std::signbit(r.d.z) ? -1 : 1);
+    
+    float3 t_next(((float)(x + step.x) - r.o.x) / r.d.x,
+                  ((float)(y + step.y) - r.o.y) / r.d.y,
+                  ((float)(z + step.z) - r.o.z) / r.d.z);
+    
+    float3 t_delta(1.0f / abs(r.d.x),
+                   1.0f / abs(r.d.y),
+                   1.0f / abs(r.d.z));
 
     // If we exit the volume, which side will it be?
-    IntVec3 out(step.x > 0 ? (int)dims.width  : -1,
-                step.y > 0 ? (int)dims.height : -1,
-                step.z > 0 ? (int)dims.depth  : -1);
+    int3 out(step.x > 0 ? (int)v.dims.width  : -1,
+             step.y > 0 ? (int)v.dims.height : -1,
+             step.z > 0 ? (int)v.dims.depth  : -1);
 
-    VolumeType val = tex3D<VolumeType>(volume, (float)x, (float)y, (float)z);
+    uchar val = tex3D<uchar>(v.tex, (float)x, (float)y, (float)z);
 
     if (val != 0) {
-        Vec3 n(0);
-        n[last_dim] = (float)-step.data[last_dim];
-
-        rec.t = t_min;
-        rec.p = r.at(t_min);
-        rec.normal = n;
-        return true;
-    }
-
-    // Fixed step size traversal
-    if (false) {
-        float t = t_min;
-        float t_step = 0.001f;
-        Vec3 p_step = r.dir()*t_step;
-        Vec3 pos = r.at(t);
-
-        while (val == 0) {
-            pos += p_step;
-            t += t_step;
-            if(!bbox.contains(pos)) return false;
-            val = tex3D<VolumeType>(volume, pos.x, pos.y, pos.z);
-        }
-
-        Vec3 pos_prev = pos - p_step;
-        if ((int)pos_prev.x != (int)pos.x) last_dim = 0;
-        if ((int)pos_prev.y != (int)pos.y) last_dim = 1;
-        if ((int)pos_prev.z != (int)pos.z) last_dim = 2;
-        Vec3 n(0);
-        n[last_dim] = (float)(-step.data[last_dim]);
-
-        rec.t = t;
-        rec.p = r.at(t);
-        rec.normal = n;
+        rec.t = tmin + EPS_F;
+        rec.p = pos;
+        rec.normal = normal;
         return true;
     }
 
     // Finding minimum t value that hits a voxel boundary and stepping in that direction
+    Dim last_dim;
     while (val == 0) {
         if (t_next.x < t_next.y) {
             if (t_next.x < t_next.z) {
                 x = x + step.x;
                 if (x == out.x) return false;
                 t_next.x = t_next.x + t_delta.x;
-                last_dim = 0;
+                last_dim = X;
             } else {
                 z = z + step.z;
                 if (z == out.z) return false;
                 t_next.z = t_next.z + t_delta.z;
-                last_dim = 2;
+                last_dim = Z;
             }
         } else {
             if (t_next.y < t_next.z) {
                 y = y + step.y;
                 if (y == out.y) return false;
                 t_next.y = t_next.y + t_delta.y;
-                last_dim = 1;
+                last_dim = Y;
             } else {
                 z = z + step.z;
                 if (z == out.z) return false;
                 t_next.z = t_next.z + t_delta.z;
-                last_dim = 2;
+                last_dim = Z;
             }
         }
-        val = tex3D<VolumeType>(volume, (float)x+0.5f, (float)y+0.5f, (float)z+0.5f);
+        val = tex3D<uchar>(v.tex, (float)x+0.5f, (float)y+0.5f, (float)z+0.5f);
     }
 
-    float t_hit = t_next[last_dim] - t_delta[last_dim];
-    Vec3 n(0);
-    n[last_dim] = -(float)step.data[last_dim];
+    float t_hit;
+    switch (last_dim) {
+        case X: 
+            t_hit = t_next.x - t_delta.x; 
+            normal = make_float3(-step.x, 0.0f, 0.0f);
+            break;
+        case Y: 
+            t_hit = t_next.y - t_delta.y; 
+            normal = make_float3(0.0f, -step.y, 0.0f);
+            break;
+        case Z: 
+            t_hit = t_next.z - t_delta.z; 
+            normal = make_float3(0.0f, 0.0f, -step.z);
+            break;
+    }
 
     rec.t = t_hit;
     rec.p = r.at(t_hit);
-    rec.normal = n;
+    rec.normal = normal;
     return true;
-}
-
-__forceinline__ __device__ float Volume::init_tmax(const Ray& r, int dim, int idx) const {
-    float distance = (float)(idx) - r.origin()[dim];
-    return distance / r.dir()[dim];
 }
